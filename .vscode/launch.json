@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Launch ASP.NET Core",
+        "type": "coreclr",
+        "request": "launch",
+        "preLaunchTask": "build",
+        "program": "${workspaceFolder}/crud-api/bin/Debug/net9.0/crud-api.dll",
+        "args": [],
+        "cwd": "${workspaceFolder}/crud-api",
+        "stopAtEntry": false,
+        "env": {
+            "ASPNETCORE_ENVIRONMENT":"Development",
+            "ASPNETCORE_URLS": "http://localhost:5168"
+        }
+      }
+    ]
+  }
+  

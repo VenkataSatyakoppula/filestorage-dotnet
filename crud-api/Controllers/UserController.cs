@@ -26,6 +26,20 @@ namespace crud_api.Controllers
             return Ok(result);
         }
 
+        [Authorize]
+        [HttpGet("logout")]
+        public ActionResult<LoginResponse> LogOut()
+        {
+            var user = _userService.GetUserById(Int32.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!));
+            if (user is null)
+            {
+                return Unauthorized();
+            }
+            user.Token = null;
+            _userService.UpdateUser(user);
+            return Ok(new {message="Log out Success"});
+        }
+
 
         [HttpGet("getall")]
         public ActionResult<List<UserDto>> GetUsers(){
@@ -53,11 +67,18 @@ namespace crud_api.Controllers
             {
                 return BadRequest();
             }
+
             User? newUser = _userService.CreateUser(user);
             if (newUser is null){
                 return Ok("User Email Already Exists");
             }
-            return CreatedAtAction(nameof(GetUserById), new { Id = newUser.Id },_mapper.Map<UserDto>(newUser));
+            var loginRequest = new LoginRequest { Email = newUser.Email, Password = user.Password };
+            LoginResponse credentials = _jwtservice.Authenticate(loginRequest)!;
+            newUser.Token = credentials.AccessToken;
+            _userService.UpdateUser(newUser);
+            var userDto = _mapper.Map<UserDto>(newUser);
+            userDto.Credentials = credentials;
+            return CreatedAtAction(nameof(GetUserById), new { Id = newUser.Id },userDto);
         }
 
         [Authorize]
@@ -71,7 +92,6 @@ namespace crud_api.Controllers
                 error = "Email Already exists"
             });
             user.Name = updatedUser.Name;
-            
             user.Email = updatedUser.Email;
             if (!string.IsNullOrEmpty(updatedUser.Password))
             {

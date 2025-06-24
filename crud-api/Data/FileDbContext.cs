@@ -23,48 +23,6 @@ namespace crud_api.Data
             .HasIndex(u => u.Email)
             .IsUnique();
 
-            List<User> users =
-            [
-                new User
-                {
-                    Id =1,
-                    Name="Venkata",
-                    Password= Utilities.ComputeSHA256("1234"),
-                    Email="Venkata@test.com"
-                },
-                new User
-                {
-                    Id =2,
-                    Name="Satya",
-                    Password= Utilities.ComputeSHA256("1234"),
-                    Email="satya@test.com"
-                },
-                new User
-                {
-                    Id =3,
-                    Name="test",
-                    Password=Utilities.ComputeSHA256("1234"),
-                    Email="test@test.com"
-                },
-                new User
-                {
-                    Id =4,
-                    Name="test2",
-                    Password=Utilities.ComputeSHA256("1234"),
-                    Email="test2@test.com"
-                }
-            ];
-
-            List<models.File> files = [
-                new models.File {
-                    FileId = 1,
-                    FileName = "Random_Turtle.jpg",
-                    FilePath = "storage/Random_Turtle.jpg",
-                    UserId = 1
-                }
-            ];
-        modelBuilder.Entity<User>().HasData(users);
-        modelBuilder.Entity<models.File>().HasData(files);
         }
     }
 }

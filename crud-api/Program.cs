@@ -13,6 +13,19 @@ var mapper = new MapperConfiguration(cgf => {
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks();
+var allowedOrigin = "http://localhost:4200";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAngularApp", policy =>
+    {
+        policy.WithOrigins(allowedOrigin)
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
+builder.Services.AddControllers();
 builder.Services.AddDbContext<FileDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<FileService>();
@@ -42,5 +55,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapScalarApiReference();
+app.MapHealthChecks("api/health");
+app.UseCors("AllowAngularApp");
 app.MapOpenApi();
 app.Run();

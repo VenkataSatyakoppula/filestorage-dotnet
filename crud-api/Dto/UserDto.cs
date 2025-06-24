@@ -4,6 +4,8 @@ namespace crud_api.Dto {
             public int Id { get; set; }
             public required string Name { get; set; }
             public required string Email { get; set; }
+
+            public required models.LoginResponse Credentials {get;set;}
         }
     public class CreateUserDto
         {

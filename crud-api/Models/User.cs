@@ -9,6 +9,7 @@ namespace crud_api.models
         public required  String Password {get; set;}
         public required  String Email {get; set;}
         public ICollection<File>? Files { get;}
+        public string? Token { get; set; }
     }
     
 }
