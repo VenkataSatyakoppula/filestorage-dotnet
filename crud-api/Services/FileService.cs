@@ -13,15 +13,23 @@ namespace crud_api.Services
         public List<models.File> GetAllUserFiles(int userId)
         {
             var user = _context.Users.Include(u => u.Files).FirstOrDefault(u => u.Id == userId);
-            return user?.Files?.ToList() ?? [];
+            return user?.Files?.Where(file=> file.IsDeleted==false).ToList() ?? [];
         }
 
-        public models.File? GetUserFilebyId(int id,int fileId)
+        public List<models.File> GetDeletedUserFiles(int userId)
+        {
+            var user = _context.Users.Include(u => u.Files).FirstOrDefault(u => u.Id == userId);
+            return user?.Files?.Where(file=> file.IsDeleted==true).ToList() ?? [];
+        }
+
+
+        public models.File? GetUserFilebyId(int id, int fileId)
         {
             var user = _context.Users.Include(u => u.Files).FirstOrDefault(f => f.Id == id) ?? null;
-            if(user is not null){
-                
-               return user.Files?.FirstOrDefault(f => f.FileId == fileId);
+            if (user is not null)
+            {
+
+                return user.Files?.FirstOrDefault(f => f.FileId == fileId);
             }
             return null;
         }
@@ -50,21 +58,33 @@ namespace crud_api.Services
             _context.SaveChanges();
             return updatedFile;
         }
-        public bool DeleteFile(int userId,int fileId)
+        public bool DeleteFile(int userId, int fileId, bool permanently)
         {
-            if (!FileExists(userId,fileId)){
+            if (!FileExists(userId, fileId))
+            {
                 return false;
             }
-            var file = _context.Files.Where(f => f.UserId ==userId && f.FileId == fileId).FirstOrDefault();
-            if(file is null || file.FilePath is null){
+            var file = _context.Files.Where(f => f.UserId == userId && f.FileId == fileId).FirstOrDefault();
+            if (file is null || file.FilePath is null)
+            {
                 return false;
+            }
+            if (file.IsDeleted == false && !permanently)
+            {
+                file.IsDeleted = true;
+                _context.SaveChanges();
+                return true;
+            }
+            if (file.IsDeleted == true && permanently)
+            {
+                string fullpath = Path.Combine(_storagePath, file.FilePath);
+                DeleteuploadFile(fullpath);
+                _context.Files.Remove(file);
+                _context.SaveChanges();
+                return true;
+            }
+            return false;
 
-            }
-            string fullpath = Path.Combine(_storagePath,file.FilePath);
-            DeleteuploadFile(fullpath);
-            _context.Files.Remove(file);
-            _context.SaveChanges();
-            return true;
         }
 
         public bool FileExists(int userId,int fileId){

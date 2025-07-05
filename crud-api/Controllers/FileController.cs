@@ -18,6 +18,14 @@ namespace crud_api.Controllers
         }
 
         [Authorize]
+        [HttpGet("recycle")]
+        public ActionResult<List<models.File>> GetDeletedFiles(){
+            return Ok(_fileService.GetDeletedUserFiles(ExtractuserId(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!)));
+        }
+
+
+
+        [Authorize]
         [HttpGet("get/{fileId}")]
         public ActionResult<models.File> GetSingleUserFile(int fileId){
             
@@ -31,6 +39,7 @@ namespace crud_api.Controllers
         }
 
         [Authorize]
+        [RequestSizeLimit(104857600)]
         [HttpPost("create")]
         public ActionResult<models.File> CreateFile([FromForm] models.File newFile,[FromForm] IFormFile formFile){
             if(formFile == null || formFile.Length == 0) return BadRequest(new {
@@ -72,18 +81,29 @@ namespace crud_api.Controllers
         [Authorize]
         [HttpDelete("delete/{fileId}")]
         public ActionResult<models.File> DeleteFile(int fileId){
-            if(!_fileService.DeleteFile(ExtractuserId(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!),fileId)) return BadRequest(new {
+            if(!_fileService.DeleteFile(ExtractuserId(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!),fileId,false)) return BadRequest(new {
                 error = "File not Found!"
             });
             return Ok(new { message= "File Successfully deleted!"});
         }
+
+
+        [Authorize]
+        [HttpDelete("wipe/{fileId}")]
+        public ActionResult<models.File> WipeFile(int fileId){
+            if(!_fileService.DeleteFile(ExtractuserId(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!),fileId,true)) return BadRequest(new {
+                error = "File not Found!"
+            });
+            return Ok(new { message= "File permanently deleted!"});
+        }
+
 
         [Authorize]
         [HttpGet("download/{fileId}")]
         public IActionResult DownloadFile(int fileId)
         {
             models.File? file = _fileService.GetUserFilebyId(ExtractuserId(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!),fileId);
-            if (file is null){
+            if (file is null || file.IsDeleted == true){
                 return BadRequest(new {
                     error = "File not Found!"
                 });
@@ -104,7 +124,8 @@ namespace crud_api.Controllers
             return PhysicalFile(_fileService.GetFullFilepath(file.FilePath), file.FileType,file.FilePath);
         }
 
-        public int ExtractuserId(string userId){
+        public int ExtractuserId(string userId)
+        {
             return Int32.Parse(userId);
         }
     
