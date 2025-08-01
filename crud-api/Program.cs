@@ -31,7 +31,8 @@ builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<FileService>();
 builder.Services.AddScoped<JwtService>();
 builder.Services.AddSingleton(mapper);
-builder.Services.AddAuthentication(options =>{
+builder.Services.AddAuthentication(options =>
+{
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -49,6 +50,10 @@ builder.Services.AddAuthentication(options =>{
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true
     };
+});
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = long.Parse(builder.Configuration["fileSizeLimit"]!); 
 });
 var app = builder.Build();
 app.UseAuthentication();

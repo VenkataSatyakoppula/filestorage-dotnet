@@ -8,7 +8,7 @@ using AutoMapper;
 
 namespace crud_api.Services
 {
-    public class UserService(FileDbContext context)
+    public class UserService(FileDbContext context,IConfiguration _config)
     {
         private readonly FileDbContext _context = context;
         
@@ -33,11 +33,13 @@ namespace crud_api.Services
             if (usersExists){
                 return null;
             }
-            var user = new User 
+            var user = new User
             {
                 Name = newUser.Name,
                 Email = newUser.Email,
-                Password = Utilities.ComputeSHA256(newUser.Password)
+                Password = Utilities.ComputeSHA256(newUser.Password),
+                RemainingSize = _config["fileSizeLimit"] ?? "1073741824",
+                TotalSize = _config["fileSizeLimit"] ?? "1073741824",
             };
             _context.Users.Add(user);
             _context.SaveChanges();

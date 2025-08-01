@@ -39,7 +39,7 @@ namespace crud_api.Controllers
         }
 
         [Authorize]
-        [RequestSizeLimit(104857600)]
+        [RequestSizeLimit(1073741824)] // 1GB
         [HttpPost("create")]
         public ActionResult<models.File> CreateFile([FromForm] models.File newFile,[FromForm] IFormFile formFile){
             if(formFile == null || formFile.Length == 0) return BadRequest(new {

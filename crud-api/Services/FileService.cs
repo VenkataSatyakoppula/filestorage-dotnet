@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace crud_api.Services
 {
-    public class FileService(FileDbContext context)
+    public class FileService(FileDbContext context,IConfiguration _config)
     {
         private readonly FileDbContext _context = context;
         private readonly string _storagePath = Path.Combine(Directory.GetCurrentDirectory(), "storage");
@@ -45,8 +45,15 @@ namespace crud_api.Services
             if (fileExists) return null;
             bool uploaded = UploadFile(newFile,uploadFile);
             if (!uploaded) return null;
+            long totalSize = 0;
+            if (!string.IsNullOrEmpty(user.RemainingSize))
+            {
+                _ = long.TryParse(user.RemainingSize, out totalSize);
+            }
+            if ((totalSize - fileSize) < 0) return null;
+            user.RemainingSize = (totalSize - fileSize).ToString();
             newFile.FileType = uploadFile.ContentType;
-            newFile.FileSize = $"{fileSize / 1024.0:F2} KB";
+            newFile.FileSize = Utilities.FileFormat(fileSize);
             newFile.UserId = userId;
             _context.Files.Add(newFile);
             _context.SaveChanges();
@@ -64,6 +71,7 @@ namespace crud_api.Services
             {
                 return false;
             }
+            var user = _context.Users.Where(u => u.Id == userId).FirstOrDefault();
             var file = _context.Files.Where(f => f.UserId == userId && f.FileId == fileId).FirstOrDefault();
             if (file is null || file.FilePath is null)
             {
@@ -75,11 +83,28 @@ namespace crud_api.Services
                 _context.SaveChanges();
                 return true;
             }
-            if (file.IsDeleted == true && permanently)
+            if (file.IsDeleted == true || permanently)
             {
                 string fullpath = Path.Combine(_storagePath, file.FilePath);
-                DeleteuploadFile(fullpath);
+                long delSize = DeleteuploadFile(fullpath);
+                long curSize = 0;
+                long maxSize = 0;
+                if (user != null && !string.IsNullOrEmpty(user.RemainingSize) && !string.IsNullOrEmpty(user.TotalSize))
+                {
+                    _ = long.TryParse(user.RemainingSize, out curSize);
+                    _ = long.TryParse(user.TotalSize, out maxSize);
+                }
+                if (curSize + delSize > maxSize)
+                {
+                    user!.TotalSize = _config["fileSizeLimit"] ?? "1073741824";
+                    user!.RemainingSize = _config["fileSizeLimit"] ?? "1073741824";
+                }
+                else
+                {
+                    user!.RemainingSize = (curSize + delSize).ToString();
+                }
                 _context.Files.Remove(file);
+                
                 _context.SaveChanges();
                 return true;
             }
@@ -118,20 +143,21 @@ namespace crud_api.Services
 
         }
 
-        public bool DeleteuploadFile(string filePath){
+        public long DeleteuploadFile(string filePath){
         try
         {
             if (File.Exists(filePath))
             {
+                long fileSize = new FileInfo(filePath).Length;
                 File.Delete(filePath);
-                return true;
+                return fileSize;
             }
-            return false;
+            return 0;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error deleting file: {ex.Message}");
-            return false;
+            return 0;
         }
             
         }
