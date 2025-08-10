@@ -21,8 +21,22 @@ namespace crud_api.Services
         public User? GetUserById(int id)
         {
             var user = _context.Users.Where(f => f.Id == id).FirstOrDefault() ?? null;
-            if(user is not null){
-               return user;
+            var files = _context.Files.Where(u => u.UserId == id).ToArray();
+            long calcSize = 0;
+            for (int i = 0; i < files.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(files[i].FileSize))
+                {
+                    calcSize += long.Parse(files[i].FileSize ?? "0");
+                }
+            }
+            if (user is not null)
+            {
+                user.RemainingSize = (long.Parse(user.TotalSize ?? "0") - calcSize).ToString();
+
+                _context.SaveChanges();
+
+                return user;
             }
             return null;
         }

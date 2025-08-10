@@ -53,7 +53,7 @@ namespace crud_api.Services
             if ((totalSize - fileSize) < 0) return null;
             user.RemainingSize = (totalSize - fileSize).ToString();
             newFile.FileType = uploadFile.ContentType;
-            newFile.FileSize = Utilities.FileFormat(fileSize);
+            newFile.FileSize = fileSize.ToString();
             newFile.UserId = userId;
             _context.Files.Add(newFile);
             _context.SaveChanges();
@@ -94,15 +94,23 @@ namespace crud_api.Services
                     _ = long.TryParse(user.RemainingSize, out curSize);
                     _ = long.TryParse(user.TotalSize, out maxSize);
                 }
-                if (curSize + delSize > maxSize)
+                int filesLength = _context.Files.Where(f => f.UserId == userId).ToArray().Length;
+                if (user != null)
                 {
-                    user!.TotalSize = _config["fileSizeLimit"] ?? "1073741824";
-                    user!.RemainingSize = _config["fileSizeLimit"] ?? "1073741824";
+                    lock (user)
+                    {
+                        if (curSize + delSize > maxSize || filesLength <= 1)
+                        {
+                            user.TotalSize = _config["fileSizeLimit"] ?? "1073741824";
+                            user.RemainingSize = _config["fileSizeLimit"] ?? "1073741824";
+                        }
+                        else
+                        {
+                            user.RemainingSize = (curSize + delSize).ToString();
+                        }
+                    }
                 }
-                else
-                {
-                    user!.RemainingSize = (curSize + delSize).ToString();
-                }
+
                 _context.Files.Remove(file);
                 
                 _context.SaveChanges();

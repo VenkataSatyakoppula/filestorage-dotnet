@@ -121,7 +121,7 @@ namespace crud_api.Controllers
                 Inline = true
             };
             Response.Headers.ContentDisposition = contentDisposition.ToString();
-            return PhysicalFile(_fileService.GetFullFilepath(file.FilePath), file.FileType,file.FilePath);
+            return PhysicalFile(_fileService.GetFullFilepath(file.FilePath), file.FileType,file.FilePath, enableRangeProcessing: true);
         }
 
         public int ExtractuserId(string userId)
