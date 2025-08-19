@@ -2,6 +2,7 @@ using crud_api.Data;
 using crud_api.common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
+using System.IO.Compression;
 
 namespace crud_api.Services
 {
@@ -9,17 +10,18 @@ namespace crud_api.Services
     {
         private readonly FileDbContext _context = context;
         private readonly string _storagePath = Path.Combine(Directory.GetCurrentDirectory(), "storage");
+        private readonly string _tempPath = Path.Combine(Directory.GetCurrentDirectory(), "temp");
 
         public List<models.File> GetAllUserFiles(int userId)
         {
             var user = _context.Users.Include(u => u.Files).FirstOrDefault(u => u.Id == userId);
-            return user?.Files?.Where(file=> file.IsDeleted==false).ToList() ?? [];
+            return user?.Files?.Where(file => file.IsDeleted == false).ToList() ?? [];
         }
 
         public List<models.File> GetDeletedUserFiles(int userId)
         {
             var user = _context.Users.Include(u => u.Files).FirstOrDefault(u => u.Id == userId);
-            return user?.Files?.Where(file=> file.IsDeleted==true).ToList() ?? [];
+            return user?.Files?.Where(file => file.IsDeleted == true).ToList() ?? [];
         }
 
 
@@ -34,16 +36,16 @@ namespace crud_api.Services
             return null;
         }
 
-        public models.File? CreateFile(int userId,models.File newFile,IFormFile uploadFile)
+        public models.File? CreateFile(int userId, models.File newFile, IFormFile uploadFile)
         {
             var user = _context.Users.Find(userId);
             if (user == null) return null;
             newFile.FileName += Path.GetExtension(uploadFile.FileName).ToLower();
-            newFile.FilePath = userId+"_"+Utilities.GenerateUUID()+"_"+newFile.FileName;
+            newFile.FilePath = userId + "_" + Utilities.GenerateUUID() + "_" + newFile.FileName;
             long fileSize = uploadFile.Length;
             bool fileExists = _context.Files.Any(f => f.UserId == userId && f.FileName == newFile.FileName);
             if (fileExists) return null;
-            bool uploaded = UploadFile(newFile,uploadFile);
+            bool uploaded = UploadFile(newFile, uploadFile);
             if (!uploaded) return null;
             long totalSize = 0;
             if (!string.IsNullOrEmpty(user.RemainingSize))
@@ -112,7 +114,7 @@ namespace crud_api.Services
                 }
 
                 _context.Files.Remove(file);
-                
+
                 _context.SaveChanges();
                 return true;
             }
@@ -120,21 +122,24 @@ namespace crud_api.Services
 
         }
 
-        public bool FileExists(int userId,int fileId){
-            var user = _context.Users.Find(userId);
+        public bool FileExists(int userId, int fileId)
+        {
+            var user = _context.Users.FirstOrDefault(u => u.Id == userId);
             if (user == null) return false;
             bool fileExists = _context.Files.Any(f => f.UserId == userId && f.FileId == fileId);
             return fileExists;
         }
 
-        public bool UploadFile(models.File newFile,IFormFile file){
+        public bool UploadFile(models.File newFile, IFormFile file)
+        {
             try
             {
                 if (!Directory.Exists(_storagePath))
                 {
                     Directory.CreateDirectory(_storagePath);
                 }
-                if (newFile.FilePath is  null){
+                if (newFile.FilePath is null)
+                {
                     throw new Exception("Filepath is Empty");
                 }
                 string filePath = Path.Combine(_storagePath, newFile.FilePath);
@@ -145,33 +150,93 @@ namespace crud_api.Services
             catch (System.Exception ex)
             {
                 Console.WriteLine($"Exception: {ex.Message}");
-                
+
                 return false;
             }
 
         }
 
-        public long DeleteuploadFile(string filePath){
-        try
+        public long DeleteuploadFile(string filePath)
         {
-            if (File.Exists(filePath))
+            try
             {
-                long fileSize = new FileInfo(filePath).Length;
-                File.Delete(filePath);
-                return fileSize;
+                if (File.Exists(filePath))
+                {
+                    long fileSize = new FileInfo(filePath).Length;
+                    File.Delete(filePath);
+                    return fileSize;
+                }
+                return 0;
             }
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error deleting file: {ex.Message}");
-            return 0;
-        }
-            
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting file: {ex.Message}");
+                return 0;
+            }
+
         }
 
-        public string  GetFullFilepath(string shortPath){
-            return Path.Combine(_storagePath,shortPath);
+        public string GetFullFilepath(string shortPath)
+        {
+            return Path.Combine(_storagePath, shortPath);
+        }
+
+        public bool RestoreFile(int userId, int fileId)
+        {
+            if (!FileExists(userId, fileId))
+            {
+                return false;
+            }
+            var file = _context.Files.Where(f => f.UserId == userId && f.FileId == fileId).FirstOrDefault();
+            if (file is null || file.FilePath is null)
+            {
+                return false;
+            }
+            if (file.IsDeleted == true)
+            {
+                file.IsDeleted = false;
+                _context.SaveChanges();
+                return true;
+            }
+            return false;
+        }
+
+        public string GetZipPath(string shortPath)
+        {
+            return Path.Combine(_tempPath, shortPath);
+        }
+
+        public string CreateTempZipFile(List<string?> filePaths)
+        {
+            var tempName = $"{Guid.NewGuid()}.zip";
+            var tempZipPath = GetZipPath(tempName);
+
+            using (var zipArchive = ZipFile.Open(tempZipPath, ZipArchiveMode.Create))
+            {
+                foreach (var filePath in filePaths)
+                {
+                    string fileName = filePath?.Split("_")[2]!;
+                    if (!File.Exists(GetFullFilepath(filePath!)))
+                        continue;
+
+                    zipArchive.CreateEntryFromFile(GetFullFilepath(filePath!), fileName);
+                }
+            }
+
+            return tempName;
+        }
+        public (bool,List<string?>) CheckAllFilesExist(int[] fileIds) {
+            var matchedFiles = _context.Files
+                .Where(f => fileIds.Contains(f.FileId))
+                .Select(f => new { f.FileId, f.FilePath })
+                .ToList();
+
+            bool allExist = matchedFiles.Select(f => f.FileId).Distinct().Count() == fileIds.Length;
+
+            var filePaths = matchedFiles.Select(f => f.FilePath).ToList();
+
+            return (allExist, filePaths);
         }
     }
+
 }

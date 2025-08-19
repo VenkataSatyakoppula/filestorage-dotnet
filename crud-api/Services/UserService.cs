@@ -47,13 +47,19 @@ namespace crud_api.Services
             if (usersExists){
                 return null;
             }
+            string fileSize = _config["fileSizeLimit"] ?? "1073741824";
+            if (newUser.userType == "guest")
+            {
+                fileSize = _config["guestFileLimit"] ?? "209715200";
+            }
             var user = new User
             {
                 Name = newUser.Name,
                 Email = newUser.Email,
                 Password = Utilities.ComputeSHA256(newUser.Password),
-                RemainingSize = _config["fileSizeLimit"] ?? "1073741824",
-                TotalSize = _config["fileSizeLimit"] ?? "1073741824",
+                RemainingSize = fileSize,
+                TotalSize = fileSize,
+                userType = newUser.userType
             };
             _context.Users.Add(user);
             _context.SaveChanges();

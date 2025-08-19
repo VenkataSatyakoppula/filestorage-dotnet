@@ -6,6 +6,7 @@ namespace crud_api.common
 {
     class Utilities
     {
+        private const string SecretKey = "bwakugjhaw43782384gfvb37845tg38gfb";
         public static string ComputeSHA256(string rawData)
         {
             byte[] bytes = Encoding.UTF8.GetBytes(rawData);
@@ -33,20 +34,27 @@ namespace crud_api.common
 
             if (fileSize < KB)
             {
-            return $"{fileSize:F2} B";
+                return $"{fileSize:F2} B";
             }
             else if (fileSize < MB)
             {
-            return $"{fileSize / KB:F2} KB";
+                return $"{fileSize / KB:F2} KB";
             }
             else if (fileSize < GB)
             {
-            return $"{fileSize / MB:F2} MB";
+                return $"{fileSize / MB:F2} MB";
             }
             else
             {
-            return $"{fileSize / GB:F2} GB";
+                return $"{fileSize / GB:F2} GB";
             }
+        }
+        public static string CreateSignature(string file, long expiry, string ip)
+        {
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(SecretKey));
+            var data = $"{file}:{expiry}:{ip}";
+            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(data));
+            return BitConverter.ToString(hash).Replace("-", "").ToLower();
         }
         
     }

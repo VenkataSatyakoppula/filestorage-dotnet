@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using crud_api.Data;
 
@@ -11,9 +12,11 @@ using crud_api.Data;
 namespace crud_api.Migrations
 {
     [DbContext(typeof(FileDbContext))]
-    partial class FileDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250819031524_AddUserType")]
+    partial class AddUserType
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
