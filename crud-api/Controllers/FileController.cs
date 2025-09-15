@@ -8,9 +8,10 @@ namespace crud_api.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class FileController(FileService fileService) : ControllerBase
+    public class FileController(FileService fileService,UserService userService) : ControllerBase
     {
         private readonly FileService _fileService = fileService;
+        private readonly UserService _userService = userService;
 
         [Authorize]
         [HttpGet("get")]
@@ -25,8 +26,11 @@ namespace crud_api.Controllers
         {
             return Ok(_fileService.GetDeletedUserFiles(ExtractuserId(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!)));
         }
-
-
+        [HttpGet("remaining")]
+        public ActionResult<bool> StorageAvailable()
+        {
+            return Ok(_fileService.CanAllocate());
+        }
 
         [Authorize]
         [HttpGet("get/{fileId}")]
@@ -57,13 +61,28 @@ namespace crud_api.Controllers
             {
                 error = "FileName is not valid"
             });
+            models.User? user = _userService.GetUserById(ExtractuserId(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!));
+            if (user == null)
+            {
+                return BadRequest(new
+            {
+                error = "User Not Found!"
+            });
+            }
+            if (_fileService.CanAllocateFile(user,formFile.Length) == false)
+            {
+                return BadRequest(new
+                {
+                    error = "Storage Limit exceeded"
+                });
+            }
             newFile.UserId = ExtractuserId(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
-            var file = _fileService.CreateFile(newFile.UserId, newFile, formFile);
+            var file = _fileService.CreateFile(user, newFile, formFile);
             if (file is null)
             {
                 return BadRequest(new
                 {
-                    error = "File Already Exists or User Doesn't exist or File upload Failed"
+                    error = "File Already Exists or File upload Failed"
                 });
             }
             return Ok(file);
@@ -132,7 +151,6 @@ namespace crud_api.Controllers
         [HttpPost("generate-link")]
         public IActionResult GenerateLink([FromForm] int[] fileIds)
         {
-
             if (fileIds.Length == 0)
             {
             return BadRequest(new
@@ -140,66 +158,37 @@ namespace crud_api.Controllers
                 error = "Zero FileIds!"
                 });
             }
-            string fileName;
-            string filePath;
-            string fileType;
-            bool isTempZip = false;
-
-            if (fileIds.Length > 1)
-            {
-            var (filesExist, filePaths) = _fileService.CheckAllFilesExist(fileIds);
+            int userId = ExtractuserId(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
+            var links = new List<Dto.FileDownloadDto>();
+            var (filesExist, files) = _fileService.CheckAllFilesExist(userId, fileIds);
             if (!filesExist)
             {
                 return BadRequest(new
                 {
-                error = "A File is Missing!"
+                    error = "A File is Missing!"
                 });
             }
-            fileName = _fileService.CreateTempZipFile(filePaths);
-            filePath = fileName;
-            fileType = "zip";
-            isTempZip = true;
-            }
-            else
+            if (fileIds.Length > 1)
             {
-            models.File? file = _fileService.GetUserFilebyId(ExtractuserId(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!), fileIds[0]);
-            if (file is null || file.IsDeleted == true)
-            {
-                return BadRequest(new
-                {
-                error = "File not Found!"
-                });
-            }
-            if (string.IsNullOrEmpty(file.FilePath) || string.IsNullOrEmpty(file.FileType))
-            {
-                return BadRequest(new
-                {
-                error = "File path or Type is invalid or missing!"
-                });
-            }
-            fileName = file.FileName;
-            filePath = file.FilePath;
-            fileType = file.FileType;
-            }
 
-            long expiry = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 60;
-            string ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "0.0.0.0";
-            string signature = Utilities.CreateSignature(filePath, expiry, ip);
-
-            string url = $"download?filename={fileName}&file={Uri.EscapeDataString(filePath)}&filetype={fileType}&expiry={expiry}&sig={signature}";
-
-            var cancellationToken = HttpContext.RequestAborted;
-            cancellationToken.Register(() =>
-            {
-                string fullPath = _fileService.GetZipPath(filePath);
-                if (System.IO.File.Exists(_fileService.GetZipPath(filePath)) && isTempZip)
+                foreach (var item in files)
                 {
-                    try { System.IO.File.Delete(_fileService.GetZipPath(filePath)); } catch { }
+                    links.Add(new Dto.FileDownloadDto
+                    {
+                        Url = _fileService.getPresigned(item),
+                        FileName = item.FileName
+                    });
                 }
+                return Ok(links);
+
+            }
+            models.File userFile = _fileService.GetUserFilebyId(userId, fileIds[0])!;
+            links.Add(new Dto.FileDownloadDto
+            {
+                Url = _fileService.getPresigned(userFile),
+                FileName = userFile.FileName
             });
-
-            return Ok(new { url, fileName });
-
+            return Ok(links);
         }
 
         [HttpGet("download")]

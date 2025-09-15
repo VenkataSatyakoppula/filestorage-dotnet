@@ -10,10 +10,11 @@ namespace crud_api.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class UserController(UserService userService,IMapper mapper,JwtService jwtService) : ControllerBase
+    public class UserController(UserService userService,IMapper mapper,JwtService jwtService, FileService fileService) : ControllerBase
     {
         private readonly UserService _userService = userService;
         private readonly JwtService _jwtservice = jwtService;
+        private readonly FileService _fileService = fileService;
         private readonly IMapper _mapper = mapper;
 
 
@@ -66,6 +67,14 @@ namespace crud_api.Controllers
             if (user is null)
             {
                 return BadRequest();
+            }
+            if (!_fileService.CanAllocate()) {
+                return BadRequest(
+                    new
+                    {
+                        result = "Cannot Allocate Resources!"
+                    }
+                );
             }
 
             User? newUser = _userService.CreateUser(user);

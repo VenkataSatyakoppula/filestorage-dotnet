@@ -1,14 +1,16 @@
 using crud_api.Data;
 using crud_api.common;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Mvc;
 using System.IO.Compression;
+using crud_api.models;
 
 namespace crud_api.Services
 {
-    public class FileService(FileDbContext context,IConfiguration _config)
+    public class FileService(FileDbContext context,CloudflareR2Service s3Service,IConfiguration _config)
     {
         private readonly FileDbContext _context = context;
+        private readonly CloudflareR2Service _s3Service = s3Service;
+
         private readonly string _storagePath = Path.Combine(Directory.GetCurrentDirectory(), "storage");
         private readonly string _tempPath = Path.Combine(Directory.GetCurrentDirectory(), "temp");
 
@@ -16,6 +18,24 @@ namespace crud_api.Services
         {
             var user = _context.Users.Include(u => u.Files).FirstOrDefault(u => u.Id == userId);
             return user?.Files?.Where(file => file.IsDeleted == false).ToList() ?? [];
+        }
+        public bool CanAllocate()
+        {
+            long totalAmount  = _context.Database.SqlQueryRaw<long>("SELECT SUM(TRY_CONVERT(BIGINT, TotalSize)) AS Total FROM Users;").AsEnumerable().FirstOrDefault();
+            _ = long.TryParse(_config["TotalObjectStorage"],out long allocatedAmount);
+            return totalAmount < allocatedAmount;
+        }
+
+        public bool CanAllocateFile(User user, long fileSize)
+        {
+            long totalSize = 0;
+            if (!string.IsNullOrEmpty(user.RemainingSize))
+            {
+                _ = long.TryParse(user.RemainingSize, out totalSize);
+            }
+            if ((totalSize - fileSize) < 0) return false;
+            return true;
+        
         }
 
         public List<models.File> GetDeletedUserFiles(int userId)
@@ -36,27 +56,28 @@ namespace crud_api.Services
             return null;
         }
 
-        public models.File? CreateFile(int userId, models.File newFile, IFormFile uploadFile)
+        public models.File? CreateFile(User user, models.File newFile, IFormFile uploadFile)
         {
-            var user = _context.Users.Find(userId);
-            if (user == null) return null;
             newFile.FileName += Path.GetExtension(uploadFile.FileName).ToLower();
-            newFile.FilePath = userId + "_" + Utilities.GenerateUUID() + "_" + newFile.FileName;
-            long fileSize = uploadFile.Length;
-            bool fileExists = _context.Files.Any(f => f.UserId == userId && f.FileName == newFile.FileName);
+            newFile.FilePath = user.Id + "_" + Utilities.GenerateUUID() + "_" + newFile.FileName;
+            if (user.userType == "guest")
+            {
+                newFile.FilePath = "guest" + newFile.FilePath;
+            }
+            bool fileExists = _context.Files.Any(f => f.UserId == user.Id && f.FileName == newFile.FileName);
             if (fileExists) return null;
             bool uploaded = UploadFile(newFile, uploadFile);
             if (!uploaded) return null;
             long totalSize = 0;
+            long fileSize = uploadFile.Length;
             if (!string.IsNullOrEmpty(user.RemainingSize))
             {
                 _ = long.TryParse(user.RemainingSize, out totalSize);
             }
-            if ((totalSize - fileSize) < 0) return null;
             user.RemainingSize = (totalSize - fileSize).ToString();
             newFile.FileType = uploadFile.ContentType;
             newFile.FileSize = fileSize.ToString();
-            newFile.UserId = userId;
+            newFile.UserId = user.Id;
             _context.Files.Add(newFile);
             _context.SaveChanges();
             return newFile;
@@ -88,7 +109,7 @@ namespace crud_api.Services
             if (file.IsDeleted == true || permanently)
             {
                 string fullpath = Path.Combine(_storagePath, file.FilePath);
-                long delSize = DeleteuploadFile(fullpath);
+                long delSize = _s3Service.Delete(file.FilePath);
                 long curSize = 0;
                 long maxSize = 0;
                 if (user != null && !string.IsNullOrEmpty(user.RemainingSize) && !string.IsNullOrEmpty(user.TotalSize))
@@ -142,36 +163,13 @@ namespace crud_api.Services
                 {
                     throw new Exception("Filepath is Empty");
                 }
-                string filePath = Path.Combine(_storagePath, newFile.FilePath);
-                using var stream = new FileStream(filePath, FileMode.Create);
-                file.CopyTo(stream);
-                return true;
+                return _s3Service.Upload(newFile.FilePath, file);
             }
             catch (System.Exception ex)
             {
                 Console.WriteLine($"Exception: {ex.Message}");
 
                 return false;
-            }
-
-        }
-
-        public long DeleteuploadFile(string filePath)
-        {
-            try
-            {
-                if (File.Exists(filePath))
-                {
-                    long fileSize = new FileInfo(filePath).Length;
-                    File.Delete(filePath);
-                    return fileSize;
-                }
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error deleting file: {ex.Message}");
-                return 0;
             }
 
         }
@@ -206,36 +204,24 @@ namespace crud_api.Services
             return Path.Combine(_tempPath, shortPath);
         }
 
-        public string CreateTempZipFile(List<string?> filePaths)
+        public async Task<Amazon.S3.Model.GetObjectResponse> GetFile(string key)
         {
-            var tempName = $"{Guid.NewGuid()}.zip";
-            var tempZipPath = GetZipPath(tempName);
-
-            using (var zipArchive = ZipFile.Open(tempZipPath, ZipArchiveMode.Create))
-            {
-                foreach (var filePath in filePaths)
-                {
-                    string fileName = filePath?.Split("_")[2]!;
-                    if (!File.Exists(GetFullFilepath(filePath!)))
-                        continue;
-
-                    zipArchive.CreateEntryFromFile(GetFullFilepath(filePath!), fileName);
-                }
-            }
-
-            return tempName;
+            return await _s3Service.GetS3ObjectAsync(key);
         }
-        public (bool,List<string?>) CheckAllFilesExist(int[] fileIds) {
+        public string getPresigned(models.File file)
+        {
+            return _s3Service.GetPresignedUrl(file);
+        }
+
+        public (bool, List<models.File>) CheckAllFilesExist(int userId,int[] fileIds)
+        {
             var matchedFiles = _context.Files
-                .Where(f => fileIds.Contains(f.FileId))
-                .Select(f => new { f.FileId, f.FilePath })
+                .Where(f => fileIds.Contains(f.FileId) && f.UserId == userId)
                 .ToList();
 
             bool allExist = matchedFiles.Select(f => f.FileId).Distinct().Count() == fileIds.Length;
 
-            var filePaths = matchedFiles.Select(f => f.FilePath).ToList();
-
-            return (allExist, filePaths);
+            return (allExist, matchedFiles);
         }
     }
 

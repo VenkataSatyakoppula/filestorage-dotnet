@@ -26,10 +26,11 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddControllers();
-builder.Services.AddDbContext<FileDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddDbContext<FileDbContext>(options => options.UseAzureSql(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<FileService>();
 builder.Services.AddScoped<JwtService>();
+builder.Services.AddScoped<CloudflareR2Service>();
 builder.Services.AddSingleton(mapper);
 builder.Services.AddAuthentication(options =>
 {
